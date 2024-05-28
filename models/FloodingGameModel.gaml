@@ -20,131 +20,136 @@ global {
 	int buildingdie <- 0 update: length(building where (each.drowned = true));
 	string the_alert_strategy;
 	graph<geometry, geometry> road_network;
+	graph<geometry, geometry> road_network_usable;
+	map<road, float> new_weights;
 	graph<geometry, geometry> river_network;
 	list<cell> current_cells;
 	list<cell> done;
 	int action_type <- -1;
 	list<string> actions <- ["build dyke", "destroy dyke", "end of turn"];
-	float budget ;
-	float budget_year <- 20000000.0;
-	
+	float budget;
+	float score;
+	float limitscore;
+	float budget_year <- 8000.0;
+	bool need_to_recompute_graph <- false;
+	list<file> images <- [file("../includes/building1.jpg"), file("../includes/eraser.png"), file("../includes/building2.jpg")];
+	file my_csv_file <- csv_file("../includes/FloodData.csv", ",");
 	string PLAYER_TURN <- "PLAYER TURN";
 	string SIMULATION <- "SIMULATION";
-	
 	string stage <- PLAYER_TURN;
-	
 	list<float> flood_coefficient <- [0.5, 1.0, 0.3];
 	int index_flood <- 0;
 	float current_coeff;
-	
 	point target_point;
 	bool ok_build_dyke <- true;
 	point start_point <- nil;
-	
 
 	reflex run_simulation when: stage = SIMULATION {
 		if (current_date in data_map.keys) {
-	 		do add_water;
-	 	} else {
-	 		stage <- PLAYER_TURN;
-	 		index_flood <- index_flood + 1;
-	 		do update_data_map;
-	 		do start_player_turn;
-	 		do pause;
-	 	}
+			if need_to_recompute_graph {
+				new_weights <- road as_map (each::each.shape.perimeter * (each.drowned ? 3.0 : 1.0));
+				road_network_usable <- as_edge_graph(road where not each.drowned);
+			}
+
+			do add_water;
+		} else {
+			stage <- PLAYER_TURN;
+			index_flood <- index_flood + 1;
+			do update_data_map;
+			do start_player_turn;
+			do pause;
+		}
+
 	}
-	
-	
+
 	action start_player_turn {
 		do tell("Start of the player turn!");
-		
+		do tell(string(score));
 		budget <- budget_year;
+		score <- budget;
 		ask cell {
 			flooding_level <- 0.0;
-			color <-  #white;
-		} 
-		
-		/*ask cell {
-			float v <- altitude / 1000 * 255;
-			write sample(v);
-			color <- rgb(255 , 255 - v, 255 - v );
+			color <- #white;
 		}
-		*/
+
 		ask experiment {
 			do update_outputs;
 		}
-			
+
 	}
+
 	action start_simulation {
 		if (length(flood_coefficient) > index_flood) {
 			ask building {
 				drowned <- false;
 				colorbuilding <- #gray;
 			}
+
 			ask road {
 				drowned <- false;
 				colorroad <- #black;
 			}
+
 			do tell("Start of the simulation stage!");
 			current_coeff <- flood_coefficient[index_flood];
-			
 			stage <- SIMULATION;
 			do compute_height_propagation;
-	 		do resume;
-	 		
-		} else  {
-			
+			do resume;
+		} else {
 			do tell("END OF GAME!");
+			do tell(string(score));
 		}
-		
-		
+
 	}
+
 	action activate_act {
 		button selected_but <- first(button overlapping (circle(1) at_location #user_location));
-		
 		if (selected_but != nil) {
 			if (selected_but.index = 2) {
 				do start_simulation;
-			
 			} else {
 				start_point <- nil;
 				ask selected_but {
 					ask button {
 						bord_col <- #black;
 					}
-	
+
 					if (action_type != id) {
 						action_type <- id;
 						bord_col <- #red;
 					} else {
 						action_type <- -1;
 					}
+
 				}
+
 			}
+
 		}
+
 	}
 
-	
-	float price_computation(point target){
+	float price_computation (point target) {
 		return (start_point distance_to target) with_precision 1;
 	}
+
 	action action_management {
 		switch action_type {
 			match 0 {
 				if start_point = nil {
 					start_point <- #user_location;
-				} else  {
+				} else {
 					float price <- price_computation(#user_location);
 					if (ok_build_dyke) {
 						create dyke with: (shape: line([start_point, #user_location]));
 						budget <- (budget - price) with_precision 1;
+						score <- score - price;
 					}
 
 					start_point <- nil;
 					target_point <- nil;
 					ok_build_dyke <- false;
-				} 
-			}
+				} }
 
 			match 1 {
 				list<dyke> d <- dyke overlapping (#user_location buffer 1);
@@ -152,11 +157,10 @@ global {
 					ask d closest_to #user_location {
 						do die;
 					}
+
 				}
-			} 
-			
-		} 
-	}
+
+			} } }
 
 	int cpt <- 0;
 
@@ -166,70 +170,69 @@ global {
 		create people number: nb_of_people {
 			location <- any_location_in(one_of(building));
 		}
-		road_network <- as_edge_graph(road);
-		river_network <- as_edge_graph(river_shapefile);
-		
-		list<building> all_buildings <- list(building);
-		
 
+		road_network <- as_edge_graph(road);
+		road_network_usable <- as_edge_graph(road);
+		river_network <- as_edge_graph(river_shapefile);
+		new_weights <- road as_map (each::each.shape.perimeter);
+		list<building> all_buildings <- list(building);
 		create evacuation_point from: shape_file_evacuation;
 		create riverr from: river_shapefile;
-		file data <- csv_file("../includes/FloodData.csv", ",");
-		matrix matrix_data <- matrix(data);
+		matrix matrix_data <- matrix(my_csv_file);
 		loop i from: 1 to: matrix_data.rows - 1 {
 			list<string> d <- matrix_data[0, i] split_with " ";
 			list<string> dd <- d[0] split_with "/";
 			list<string> dt <- d[1] split_with ":";
 			date date_gama <- date([int(dd[2]), int(dd[1]), int(dd[0]), int(dt[0]), int(dt[1]), 0]);
-			data_map[date_gama] <-
-			[float(matrix_data[5, i]), float(matrix_data[25, i]), float(matrix_data[26, i]), float(matrix_data[28, i]), float(matrix_data[29, i]), float(matrix_data[30, i])];
+			data_map[date_gama] <- [float(matrix_data[5, i])];
 		}
+
 		starting_date <- first(data_map.keys);
-		
 		do init_water;
 		do start_player_turn;
-	
-		
 	}
 
-
-	action update_data_map{
+	action update_data_map {
 		float s <- current_date - first(data_map.keys);
 		list<date> previous_dates <- copy(data_map.keys);
 		loop d over: previous_dates {
 			list<float> v <- data_map[d];
 			data_map[d add_seconds s] <- v;
-			remove key: d from: data_map ;
-			
+			remove key: d from: data_map;
 		}
-		
+
 	}
 
-	
-
+	reflex notification when: score >= limitscore {
+		do tell("You passed the level!");
+		do die;
+	}
 
 	action compute_height_propagation {
 		current_cells <- cell overlapping (river);
-		ask cell  {
+		ask cell {
 			dyke_altitude <- 0.0;
 		}
+
 		ask dyke where not each.is_broken {
 			ask cell overlapping (shape + width) {
 				dyke_altitude <- (myself.height);
 			}
+
 		}
-		
+
 		ask building {
 			ask cell overlapping shape {
-				dyke_altitude <- max(dyke_altitude,(myself.height));
+				dyke_altitude <- max(dyke_altitude, (myself.height));
 			}
+
 		}
-	
+
 		ask current_cells {
 			altitude <- grid_value + dyke_altitude;
 			//color <- #blue;
 		}
-		
+
 		done <- copy(current_cells);
 		loop while: not empty(current_cells) {
 			loop c over: copy(current_cells) {
@@ -239,23 +242,25 @@ global {
 					if not (cn in done) and not (cn in current_cells) {
 						current_cells << cn;
 					}
-					cn.altitude <- max(cn.grid_value + cn.dyke_altitude , min(c.altitude, cn.altitude));
+
+					cn.altitude <- max(cn.grid_value + cn.dyke_altitude, min(c.altitude, cn.altitude));
 				}
+
 			}
+
 		}
 
 	}
-	
+
 	action init_water {
 		ask cell overlapping river {
 			is_river <- true;
 		}
 
 	}
-	
-	action precompute_propagate_water  {
-		do compute_height_propagation;
 
+	action precompute_propagate_water {
+		do compute_height_propagation;
 		ask cell {
 			grid_value <- altitude;
 		}
@@ -263,52 +268,51 @@ global {
 		save (cell) format: "asc" to: "../includes/elevation.asc";
 	}
 
-	
-
 	action add_water {
 		bool need_recomputation <- false;
-		float water_level <- data_map[current_date][0] * current_coeff;
+		matrix matrix_data <- matrix(my_csv_file);
+		float water_level <- data_map[current_date][0];
 		ask cell {
 			flooding_level <- water_level - altitude;
 			if flooding_level <= 0.0 {
-			// Bỏ qua dòng này để giữ nguyên màu ban đầu của ô
 			} else {
 				if dyke_altitude > 0.0 {
 					dyke_altitude <- 0.0;
 					ask dyke overlapping self {
 						is_broken <- true;
 					}
+
 					need_recomputation <- true;
 				}
-				//is_river <- true;
-			//	if (is_river) {
-					float val <- 255 * (1 - flooding_level / 1.0);
-					color <- rgb(val, val, 255);
-					
-					
-				//}
 
+				float val <- 255 * (1 - flooding_level / 1.0);
+				color <- rgb(val, val, 255);
 			}
 
 		}
+
 		if need_recomputation {
-			do compute_height_propagation ;
+			do compute_height_propagation;
 		}
-	} 
-}
+
+	} }
 
 species evacuation_point {
 	rgb color <- #red;
+
 	aspect base {
 		draw triangle(50) color: color;
 	}
+
 }
 
 species riverr {
 	rgb color <- #blue;
+
 	aspect base {
 		draw shape color: color;
 	}
+
 }
 
 species road {
@@ -317,39 +321,36 @@ species road {
 	float height <- 0.5;
 	rgb colorroad <- #black;
 	cell the_cell <- one_of(cell);
-	list<road> overlapping_roads <- [];
 
-	init {
-		overlapping_roads <- road where (each overlaps self);
-	}
-
-	reflex check_drowning {
-		ask riverr {
-			ask myself.overlapping_roads {
-				cell a_cell <- one_of(cell overlapping self);
-				if (a_cell != nil and a_cell.flooding_level > 0.0 and a_cell.grid_value > height) // Kiểm tra a_cell không phải là nil
-				{
-					road_network >- self;
-					drowned <- true;
-					colorroad <- #red;
-				}
+	reflex check_drowning when: not drowned {
+		ask (cell overlapping self) {
+			if (flooding_level > 0.5) // Kiểm tra a_cell không phải là nil
+			{
+				myself.drowned <- true;
+				myself.colorroad <- #red;
+				need_to_recompute_graph <- true;
+				break;
 			}
+
 		}
+
 	}
 
 	aspect base {
 		draw shape color: colorroad;
 	}
+
 }
 
 species dyke {
 	float height <- 10.0;
 	bool is_broken <- false;
 	float width <- 10.0;
-	
+
 	aspect default {
 		draw shape + width depth: height color: is_broken ? #red : #green;
 	}
+
 }
 
 species building {
@@ -361,7 +362,7 @@ species building {
 	list<building> overlapping_building <- [];
 
 	init {
-        overlapping_building <- building where (each overlaps self);
+		overlapping_building <- building where (each overlaps self);
 	}
 
 	reflex check_drowning {
@@ -383,6 +384,7 @@ species building {
 	aspect base {
 		draw shape color: colorbuilding;
 	}
+
 }
 
 species people skills: [moving] {
@@ -390,80 +392,67 @@ species people skills: [moving] {
 	string color <- 'green';
 	bool boat <- false;
 	bool alerted <- false;
-	bool drowned <- false;
-	bool saved <- false;
-	point target <- {1690.1801628989738, 3838.6843718571527, 0.0};
+	point target <- nil;
 	float perception_distance;
 	float speed <- 0.5 #km / #h;
+	path my_path;
 
 	reflex alert_target {
-		if (not alerted and not drowned and not saved and color = 'green') {
-			switch the_alert_strategy {
-				match "RANDOM" {
-					target <- any_location_in(one_of(evacuation_point));
-					do goto(target: target, on: road_network);
+		write name;
+		if (not alerted and color = 'green') {
+			if target = nil {
+				switch the_alert_strategy {
+					match "RANDOM" {
+						target <- (one_of(evacuation_point)).location;
+					}
+
+					match "CLOSEST" {
+						using (topology(road_network_usable)) {
+							target <- (evacuation_point closest_to self).location;
+						}
+
+					}
+
 				}
 
-				match "CLOSEST" {
-					target <- (evacuation_point closest_to self).location;
-					do goto(target: target, on: road_network);
-				}
+				my_path <- road_network_usable path_between (location, target);
+				write name + " " + sample(target) + " " + sample(my_path);
 			}
 
-			if (target != nil) {
-				do goto;
-			}
-
-			if (location = target) {
-				evacuated <- evacuated + 1;
-				saved <- true;
-				target <- nil;
-			} 
-		}
-
-		if (drowned or saved) {
-			do die;
-		} 
-	}
-
-	list<people> overlapping_pp <- [];
-
-	init {
-		overlapping_pp <- people where (each overlaps self);
-	}
+			if my_path != nil {
+				write sample(new_weights);
+				do follow(path: my_path, move_weights: new_weights);
+				if (location = target) {
+					score <- score + 100;
+					evacuated <- evacuated + 1;
+					target <- nil;
+					do die;
+				} } } }
 
 	reflex check_drowning {
-		ask riverr {
-			ask myself.overlapping_pp {
-				cell a_cell <- one_of(cell overlapping self);
-				if (a_cell != nil and a_cell.flooding_level > 0.0) {
-					drowned <- true;
-				}
-
-			}
-
+		cell a_cell <- cell(location);
+		if (a_cell != nil and a_cell.flooding_level > 0.0 and flip(0.5)) {
+			casualties <- casualties + 1;
+			score <- score - 10;
+			do die;
 		}
 
-	}
-
-	reflex die when: drowned {
-		casualties <- casualties + 1;
-		do die;
 	}
 
 	aspect default {
 		draw circle(36) color: boat ? #red : #green;
-	} 
-}
+	} }
 
 grid cell file: DEM_grid_file neighbors: 4 {
 	float altitude <- #max_float;
 	float dyke_altitude;
 	bool is_river;
 	float flooding_level;
+
 	aspect default {
 		draw "" + (grid_value with_precision 1) + "," + (altitude with_precision 1) color: #black font: (font(10));
 	}
+
 }
 
 grid button width: 2 height: 2 {
@@ -472,24 +461,14 @@ grid button width: 2 height: 2 {
 
 	aspect normal {
 		draw rectangle(shape.width * 0.8, shape.height * 0.8).contour + (shape.height * 0.01) color: bord_col;
-		draw (actions[id]) size: {shape.width * 0.5, shape.height * 0.5} color: #white;
+		draw image_file(images[id]) size: {shape.width * 0.8, shape.height * 0.5};
 	}
+
 }
 
-/*experiment compute_height_ptopagation {
-	action _init_ {
-		create simulation with: (height_propagation: true);
-	}
-	output {
-		display map {
-			species cell;
-		}
-	}
-}*/
-
 experiment game type: gui {
-	parameter "Alert Strategy" var: the_alert_strategy init: "CLOSEST" among: ["RANDOM", "CLOSEST", "BOAT"] category: "Alert";
-	parameter "Number of people" var: nb_of_people init: 100 min: 100 max: 20000 category: "Initialization";
+	parameter "Alert Strategy" var: the_alert_strategy init: "CLOSEST" among: ["RANDOM", "CLOSEST"] category: "Alert";
+	//	parameter "Number of people" var: nb_of_people init: 100 min: 100 max: 20000 category: "Initialization";
 	output {
 		layout horizontal([0.0::7285, 1::2715]) tabs: true controls: false;
 		display map {
@@ -505,11 +484,13 @@ experiment game type: gui {
 			species dyke;
 			graphics "point" {
 				if start_point != nil {
-					draw square(80) color: #pink at: start_point;
+					draw circle(30) color: #pink at: start_point;
 				}
+
 				if target_point != nil and ok_build_dyke {
-					draw square(80) color: #magenta at: target_point;
+					draw circle(30) color: #magenta at: target_point;
 				}
+
 			}
 
 			event #mouse_move {
@@ -519,18 +500,23 @@ experiment game type: gui {
 						float p <- price_computation(target_point);
 						ok_build_dyke <- p <= budget;
 						if ok_build_dyke {
-							geometry l <- line([start_point,target_point ]);
+							geometry l <- line([start_point, target_point]);
 							if ((cell overlapping l) first_with (each.is_river)) != nil {
 								ok_build_dyke <- false;
 							}
-							if ok_build_dyke and (not empty(building overlapping l) ) {
+
+							if ok_build_dyke and (not empty(building overlapping l)) {
 								ok_build_dyke <- false;
 							}
+
 						}
+
 					}
-					
+
 				}
+
 			}
+
 			event #mouse_down {
 				ask simulation {
 					do action_management;
@@ -540,19 +526,20 @@ experiment game type: gui {
 
 		}
 
-		/*display dem type: 3d {
-			grid cell elevation: grid_value * 10 grayscale: true;
-			graphics "river " {
-				draw river color: #red;
-			}
-
-		}*/
-
 		display action_button background: #black name: "Tools panel" type: 2d antialias: false {
 			species button aspect: normal;
 			graphics "budget" {
-				draw "budget: " + (budget with_precision 0) color: #white font:font(24) at: {world.location.x, 300} anchor: #center ;
+				draw "budget: " + (budget with_precision 0) color: #white font: font(24) at: {world.location.x, 300} anchor: #center;
 			}
+
+			graphics "score" {
+				draw "score: " + (score with_precision 0) color: #white font: font(24) at: {world.location.x, 6200} anchor: #center;
+			}
+
+			graphics "limitscore" {
+				draw "limit score: " + (limitscore with_precision 0) color: #white font: font(24) at: {world.location.x, 600} anchor: #center;
+			}
+
 			event #mouse_down {
 				ask simulation {
 					do activate_act;
@@ -566,7 +553,89 @@ experiment game type: gui {
 		monitor "Number of people die" value: casualties;
 		monitor "Number of road die" value: roaddie;
 		monitor "Number of building drowned" value: buildingdie;
-		
+		monitor "Score" value: score;
 	}
 
 }
+
+experiment "2 Simulations" type: gui {
+
+	action _init_ {
+		create simulation with: [nb_of_people::500, the_alert_strategy::"CLOSEST", my_csv_file::csv_file("../includes/FloodData.csv")] {
+			do start_simulation;
+		}
+
+		create simulation with: [nb_of_people::500, the_alert_strategy::"RANDOM", my_csv_file::csv_file("../includes/FloodData.csv")] {
+			do start_simulation;
+		}
+
+	}
+
+	output {
+		display map {
+			grid cell;
+			graphics "river " {
+				draw river color: #blue;
+			}
+
+			species building aspect: base refresh: false;
+			species road aspect: base;
+			species people aspect: default;
+			species evacuation_point aspect: base;
+		}
+
+	}
+
+	permanent {
+		display Comparison1 background: #white {
+			chart "People die " type: series {
+				loop s over: simulations {
+					data "PP die " + int(s) value: s.casualties color: s.color marker: false style: line thickness: 6;
+				}
+
+			}
+
+		}
+
+		display Comparison2 background: #white {
+			chart "Road die" type: series {
+				loop s over: simulations {
+					data "Road drowned " + int(s) value: s.roaddie color: s.color marker: false style: line thickness: 6;
+				}
+
+			}
+
+		}
+
+		display Comparison3 background: #white {
+			chart "Building drowned" type: series {
+				loop s over: simulations {
+					data "Building drowned " + int(s) value: s.buildingdie color: s.color marker: false style: line thickness: 6;
+				}
+
+			}
+
+		}
+
+	}
+
+}
+
+experiment game_with_mode parent: game {
+
+	action _init_ {
+		map result <- user_input_dialog("Main title", [choose("Choose a difficulty", string, "normal", ["easy", "normal", "hard"])]);
+		string difficulty <- result["Choose a difficulty"];
+		switch difficulty {
+			match "easy" {
+				create simulation with: (nb_of_people: 200, budget_year: 8000, the_alert_strategy: "CLOSEST", limitscore: 13000);
+			}
+
+			match "normal" {
+				create simulation with: (nb_of_people: 400, budget_year: 5000, the_alert_strategy: "CLOSEST", limitscore: 32000);
+
+			}
+
+			match "hard" {
+				create simulation with: (nb_of_people: 600, budget_year: 3000, the_alert_strategy: "CLOSEST", limitscore: 55000);
+			} } } }
