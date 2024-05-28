@@ -11,8 +11,12 @@ global {
 	file MOC_shapefile <- file("../includes/MOC.shp");
 	geometry shape <- envelope(bounds_shape_file);
 	bool height_propagation <- false;
+	map<string, rgb> color_per_type <- ["CurrentDate"::current_date,"Budget"::budget,"LimitScore"::limitscore, "Score"::score];
 	map<date, list<float>> data_map;
+	string type <- one_of(color_per_type.keys);
+	rgb color <- color_per_type[type];
 	float step <- 1 #h;
+	date current_date<-#now;
 	int nb_of_people <- 100;
 	int casualties <- 0;
 	int evacuated <- 0;
@@ -32,8 +36,8 @@ global {
 	float limitscore;
 	float budget_year <- 8000.0;
 	bool need_to_recompute_graph <- false;
-	list<file> images <- [file("../includes/building1.jpg"), file("../includes/eraser.png"), file("../includes/building2.jpg")];
-	file my_csv_file <- csv_file("../includes/FloodData.csv", ",");
+	list<file> images <- [file("../includes/build_icon.png"), file("../includes/eraser.png"), file("../includes/gstart_icon.jpg")];
+	file my_csv_file <- csv_file("../includes/FloodDataH.csv", ",");
 	string PLAYER_TURN <- "PLAYER TURN";
 	string SIMULATION <- "SIMULATION";
 	string stage <- PLAYER_TURN;
@@ -398,7 +402,7 @@ species people skills: [moving] {
 	path my_path;
 
 	reflex alert_target {
-		write name;
+//		write name;
 		if (not alerted and color = 'green') {
 			if target = nil {
 				switch the_alert_strategy {
@@ -416,11 +420,11 @@ species people skills: [moving] {
 				}
 
 				my_path <- road_network_usable path_between (location, target);
-				write name + " " + sample(target) + " " + sample(my_path);
+//				write name + " " + sample(target) + " " + sample(my_path);
 			}
 
 			if my_path != nil {
-				write sample(new_weights);
+//				write sample(new_weights);
 				do follow(path: my_path, move_weights: new_weights);
 				if (location = target) {
 					score <- score + 100;
@@ -448,7 +452,8 @@ grid cell file: DEM_grid_file neighbors: 4 {
 	float dyke_altitude;
 	bool is_river;
 	float flooding_level;
-
+    string type <- one_of(color_per_type.keys);
+	rgb color <- color_per_type[type];
 	aspect default {
 		draw "" + (grid_value with_precision 1) + "," + (altitude with_precision 1) color: #black font: (font(10));
 	}
@@ -524,22 +529,30 @@ experiment game type: gui {
 
 			}
 
+			overlay position: {5, 5} size: {300 #px, 150 #px} background: #black transparency: 0.2 border: #black rounded: true {
+				float y <- 30 #px;
+				loop type over: color_per_type.keys {
+					if (type = "Score") {
+						draw "Score:"+score at: {10 #px, y + 4 #px} color: #white font: font("Helvetica", 18, #bold);
+					}
+					if (type = "LimitScore") {
+						draw "LimitScore:"+limitscore at: {10 #px, y + 4 #px} color: #white font: font("Helvetica", 18, #bold);
+					}
+					if (type = "Budget") {
+						draw "Budget:"+budget at: {10 #px, y + 4 #px} color: #white font: font("Helvetica", 18, #bold);
+					}
+					if (type = "CurrentDate") {
+						draw "CurrentDate: " + string(date(current_date))  at: {10 #px, y + 4 #px} color: #white font: font("Helvetica", 18, #bold);
+					}
+					y <- y + 30 #px;
+				}
+
+			}
+
 		}
 
 		display action_button background: #black name: "Tools panel" type: 2d antialias: false {
 			species button aspect: normal;
-			graphics "budget" {
-				draw "budget: " + (budget with_precision 0) color: #white font: font(24) at: {world.location.x, 300} anchor: #center;
-			}
-
-			graphics "score" {
-				draw "score: " + (score with_precision 0) color: #white font: font(24) at: {world.location.x, 6200} anchor: #center;
-			}
-
-			graphics "limitscore" {
-				draw "limit score: " + (limitscore with_precision 0) color: #white font: font(24) at: {world.location.x, 600} anchor: #center;
-			}
-
 			event #mouse_down {
 				ask simulation {
 					do activate_act;
@@ -553,13 +566,11 @@ experiment game type: gui {
 		monitor "Number of people die" value: casualties;
 		monitor "Number of road die" value: roaddie;
 		monitor "Number of building drowned" value: buildingdie;
-		monitor "Score" value: score;
 	}
 
 }
 
 experiment "2 Simulations" type: gui {
-
 	action _init_ {
 		create simulation with: [nb_of_people::500, the_alert_strategy::"CLOSEST", my_csv_file::csv_file("../includes/FloodData.csv")] {
 			do start_simulation;
@@ -583,7 +594,6 @@ experiment "2 Simulations" type: gui {
 			species people aspect: default;
 			species evacuation_point aspect: base;
 		}
-
 	}
 
 	permanent {
@@ -624,7 +634,7 @@ experiment "2 Simulations" type: gui {
 experiment game_with_mode parent: game {
 
 	action _init_ {
-		map result <- user_input_dialog("Main title", [choose("Choose a difficulty", string, "normal", ["easy", "normal", "hard"])]);
+		map result <- user_input_dialog("Flooding game", [choose("Choose a difficulty", string, "normal", ["easy", "normal", "hard"])]);
 		string difficulty <- result["Choose a difficulty"];
 		switch difficulty {
 			match "easy" {
