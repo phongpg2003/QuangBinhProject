@@ -13,7 +13,7 @@ global {
 	bool height_propagation <- false;
 	map<string, rgb> color_per_type <- ["CurrentDate"::current_date, "Budget"::budget, "LimitScore"::limitscore, "Score"::score];
 	map<date, list<float>> data_map;
-	float step <- 1 #h;
+	float step <- 1 #mn;
 	date current_date <- #now;
 	int nb_of_people <- 100;
 	int casualties <- 0;
@@ -34,34 +34,64 @@ global {
 	float limitscore;
 	float budget_year <- 8000.0;
 	bool need_to_recompute_graph <- false;
-	list<file> images <- [file("../includes/build_icon.png"), file("../includes/eraser.png"), file("../includes/gstart_icon.jpg")];
-	file my_csv_file <- csv_file("../includes/FloodDataH.csv", ",");
+	list<file> images <- [file("../includes/pencil.jpg"), file("../includes/eraser1.png"), file("../includes/gstart_icon.jpg"),file("../includes/build_icon.png")];
+	file my_csv_file <- csv_file("../includes/FloodDataH_short.csv", ",");
 	string PLAYER_TURN <- "PLAYER TURN";
 	string SIMULATION <- "SIMULATION";
 	string stage <- PLAYER_TURN;
-	list<float> flood_coefficient <- [0.5, 1.0, 0.3];
+	list<float> flood_coefficient <- [0.3, 0.8, 0.2];
 	int index_flood <- 0;
 	float current_coeff;
 	point target_point;
 	bool ok_build_dyke <- true;
 	point start_point <- nil;
-
-	reflex run_simulation when: stage = SIMULATION {
-		if (current_date in data_map.keys) {
-			if need_to_recompute_graph {
-				new_weights <- road as_map (each::each.shape.perimeter * (each.drowned ? 3.0 : 1.0));
-				road_network_usable <- as_edge_graph(road where not each.drowned);
+	bool update_drowning <- false update: true;
+	map<string, float> benchmark_map;
+	bool benchmark_mode <- false;
+	reflex RUN_SIMULATION when: stage = SIMULATION {
+		float t;
+		if benchmark_mode {
+			t <- gama.machine_time;
+		}
+		
+		if (every(#h)) {
+			if (current_date in data_map.keys) {
+				if need_to_recompute_graph {
+					new_weights <- road as_map (each::each.shape.perimeter * (each.drowned ? 3.0 : 1.0));
+					road_network_usable <- as_edge_graph(road where not each.drowned);
+				}
+				t <- add_benchmark("recompute_graph",t);	
+				do add_water;
+				t <- add_benchmark("add_water",t);
+				
+			} else {
+				stage <- PLAYER_TURN;
+				index_flood <- index_flood + 1;
+				do update_data_map;
+				do start_player_turn;
+				do pause;
 			}
-
-			do add_water;
-		} else {
-			stage <- PLAYER_TURN;
-			index_flood <- index_flood + 1;
-			do update_data_map;
-			do start_player_turn;
-			do pause;
+		
+		}
+		if (benchmark_mode ) {
+			write "*********** Benchmark result ***********";
+			loop k over: benchmark_map.keys sort_by (-1 *benchmark_map[each]) {
+				write k + " -> " + (benchmark_map[k]/1000.0) + " s";
+			}
 		}
 
+	}
+	
+	float add_benchmark (string k, float ref_time) {
+		if benchmark_mode {
+			if not (k in benchmark_map.keys) {
+				benchmark_map[k] <- 0.0;
+			}
+			benchmark_map[k] <- benchmark_map[k]  + gama.machine_time - ref_time;
+			ref_time <- gama.machine_time;
+			return gama.machine_time;
+		}
+		return 0.0;
 	}
 
 	action start_player_turn {
@@ -109,7 +139,8 @@ global {
 		if (selected_but != nil) {
 			if (selected_but.index = 2) {
 				do start_simulation;
-			} else {
+			}
+			else {
 				start_point <- nil;
 				ask selected_but {
 					ask button {
@@ -147,14 +178,13 @@ global {
 						budget <- (budget - price) with_precision 1;
 						score <- score - price;
 					}
-
 					start_point <- nil;
 					target_point <- nil;
 					ok_build_dyke <- false;
 				} }
 
 			match 1 {
-				list<dyke> d <- dyke overlapping (#user_location buffer 1);
+				list<dyke> d <- dyke overlapping (#user_location buffer 20);
 				if (not empty(d)) {
 					ask d closest_to #user_location {
 						do die;
@@ -162,7 +192,27 @@ global {
 
 				}
 
-			} } }
+			}
+			match 3{
+				list<dyke> d <- dyke overlapping (#user_location buffer 20);
+				write "d: " + d;
+						
+				if (not empty(d)) {
+					ask d closest_to #user_location {
+						write "ldldld";
+						is_broken<-false;
+						height<- height+20.0;
+						ask dyke where not each.is_broken {
+							ask cell overlapping (shape + width) {
+								dyke_altitude <- (myself.height);
+								altitude<-(myself.height);
+							}
+
+						}
+					}
+				}
+			} 
+			} }
 
 	int cpt <- 0;
 
@@ -271,6 +321,8 @@ global {
 	}
 
 	action add_water {
+		float t <- gama.machine_time;
+		update_drowning <- true;
 		bool need_recomputation <- false;
 		matrix matrix_data <- matrix(my_csv_file);
 		float water_level <- data_map[current_date][0];
@@ -280,24 +332,26 @@ global {
 			} else {
 				if dyke_altitude > 0.0 {
 					dyke_altitude <- 0.0;
-					ask dyke overlapping self {
+					ask dykes where not (each.is_broken)  {
 						is_broken <- true;
+						need_recomputation <- true;
 					}
 
-					need_recomputation <- true;
 				}
-
 				float val <- 255 * (1 - flooding_level / 1.0);
 				color <- rgb(val, val, 255);
 			}
 
 		}
-
+		t <- add_benchmark("compute_water_level",t);	
+				
 		if need_recomputation {
 			do compute_height_propagation;
 		}
-
-	} }
+		t <- add_benchmark("compute_height_propagation",t);	
+				
+	} 
+}
 
 species evacuation_point {
 	rgb color <- #red;
@@ -322,18 +376,29 @@ species road {
 	bool drowned <- false;
 	float height <- 0.5;
 	rgb colorroad <- #black;
-	cell the_cell <- one_of(cell);
-
-	reflex check_drowning when: not drowned {
-		ask (cell overlapping self) {
-			if (flooding_level > 0.5) // Kiểm tra a_cell không phải là nil
-			{
-				myself.drowned <- true;
-				myself.colorroad <- #red;
-				need_to_recompute_graph <- true;
-				break;
-			}
-
+	list<cell> my_cells ;
+	
+	init {
+		my_cells <- cell overlapping self;
+	}
+	
+	
+	reflex check_drowning when: not drowned and  update_drowning{
+		float t;
+		if benchmark_mode {
+			t <- gama.machine_time;
+		}
+		
+		ask my_cells where (each.flooding_level > 0.5) // Kiểm tra a_cell không phải là nil
+		{
+			myself.drowned <- true;
+			myself.colorroad <- #red;
+			need_to_recompute_graph <- true;
+			break;
+		}
+		
+		ask world {
+			do add_benchmark("Road - check_drowning", t);
 		}
 
 	}
@@ -341,7 +406,6 @@ species road {
 	aspect base {
 		draw shape color: colorroad;
 	}
-
 }
 
 species dyke {
@@ -349,6 +413,11 @@ species dyke {
 	bool is_broken <- false;
 	float width <- 10.0;
 
+	init {
+		ask cell overlapping self {
+			dykes << myself;
+		}
+	}
 	aspect default {
 		draw shape + width depth: height color: is_broken ? #red : #green;
 	}
@@ -360,27 +429,26 @@ species building {
 	rgb colorbuilding <- #gray;
 	bool drowned <- false;
 	rgb colorroad <- #black;
-	cell the_cell <- one_of(cell);
-	list<building> overlapping_building <- [];
-
+	list<cell> my_cells ;
+	
 	init {
-		overlapping_building <- building where (each overlaps self);
+		my_cells <- cell overlapping self;
 	}
 
-	reflex check_drowning {
-		ask riverr {
-			ask myself.overlapping_building {
-				cell a_cell <- one_of(cell overlapping self);
-				if (a_cell != nil and a_cell.flooding_level > 0.0 and a_cell.grid_value > height) // Kiểm tra a_cell không phải là nil
-				{
-					drowned <- true;
-					colorbuilding <- #red;
-				}
-
-			}
-
+	reflex check_drowning when: not drowned and  update_drowning{
+		float t;
+		if benchmark_mode {
+			t <- gama.machine_time;
 		}
-
+		ask my_cells where (each.flooding_level > 1.0) {
+			myself.drowned <- true;
+			myself.colorbuilding <- #red;
+			score <- score - 5.0;
+			break;
+		}
+		ask world {
+			do add_benchmark("Building - check_drowning", t);
+		}
 	}
 
 	aspect base {
@@ -391,6 +459,7 @@ species building {
 
 species people skills: [moving] {
 	float height_pp <- 1.7 #m;
+	
 	string color <- 'green';
 	bool boat <- false;
 	bool alerted <- false;
@@ -399,46 +468,61 @@ species people skills: [moving] {
 	float speed <- 0.5 #km / #h;
 	path my_path;
 
-	reflex alert_target {
-	//		write name;
-		if (not alerted and color = 'green') {
-			if target = nil {
-				switch the_alert_strategy {
-					match "RANDOM" {
-						target <- (one_of(evacuation_point)).location;
-					}
-
-					match "CLOSEST" {
-						using (topology(road_network_usable)) {
-							target <- (evacuation_point closest_to self).location;
-						}
-
-					}
-
+	reflex become_alerted when: not alerted and flip(0.01) {
+		alerted <- true;
+	}
+	
+	reflex alert_target when: alerted {
+		float t;
+		if benchmark_mode {
+			t <- gama.machine_time;
+		}
+		if target = nil {
+			switch the_alert_strategy {
+				match "RANDOM" {
+					target <- (one_of(evacuation_point)).location;
 				}
 
-				my_path <- road_network_usable path_between (location, target);
-				//				write name + " " + sample(target) + " " + sample(my_path);
+				match "CLOSEST" {
+					using (topology(road_network_usable)) {
+						evacuation_point ep <- (evacuation_point closest_to self);
+						target <- ep.location;
+					}
+				}
 			}
 
-			if my_path != nil {
-			//				write sample(new_weights);
-				do follow(path: my_path, move_weights: new_weights);
-				if (location = target) {
-					score <- score + 100;
-					evacuated <- evacuated + 1;
-					target <- nil;
-					do die;
-				} } } }
+			my_path <- road_network_usable path_between (location, target);
+				//				write name + " " + sample(target) + " " + sample(my_path);
+		}
+
+		if my_path != nil {
+			do follow(path: my_path, move_weights: new_weights);
+			if (location = target) {
+				score <- score + 100;
+				evacuated <- evacuated + 1;
+				target <- nil;
+				do die;
+			} 
+		}
+		ask world {
+			do add_benchmark("alert_target", t);
+		} 
+	}
 
 	reflex check_drowning {
+		float t;
+		if benchmark_mode {
+			t <- gama.machine_time;
+		}
 		cell a_cell <- cell(location);
-		if (a_cell != nil and a_cell.flooding_level > 0.0 and flip(0.5)) {
+		if (a_cell != nil and a_cell.flooding_level > 0.2 and flip(0.5)) {
 			casualties <- casualties + 1;
 			score <- score - 10;
 			do die;
 		}
-
+		ask world {
+			do add_benchmark("People - check_drowning", t);
+		}
 	}
 
 	aspect default {
@@ -448,6 +532,7 @@ species people skills: [moving] {
 grid cell file: DEM_grid_file neighbors: 4 {
 	float altitude <- #max_float;
 	float dyke_altitude;
+	list<dyke> dykes;
 	bool is_river;
 	float flooding_level;
 	string type <- one_of(color_per_type.keys);
@@ -474,7 +559,7 @@ experiment game type: gui {
 	parameter "Alert Strategy" var: the_alert_strategy init: "CLOSEST" among: ["RANDOM", "CLOSEST"] category: "Alert";
 	//	parameter "Number of people" var: nb_of_people init: 100 min: 100 max: 20000 category: "Initialization";
 	output {
-		layout horizontal([0.0::7285, 1::2715]) tabs: true controls: false;
+		layout horizontal([0.0::7285, 1::2715]) tabs: true controls: true;
 		display map {
 			grid cell;
 			graphics "river " {
@@ -560,9 +645,7 @@ experiment game type: gui {
 				ask simulation {
 					do activate_act;
 				}
-
 			}
-
 		}
 
 		monitor "Number of people alive" value: evacuated;
