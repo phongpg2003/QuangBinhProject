@@ -19,7 +19,7 @@ public class SendReceiveMessageExample : SimulationManager
 //action activated at the end of the update phase (every frame)
  protected override void OtherUpdate()
  {
-
+         
      if (IsGameState(GameState.GAME) && UnityEngine.Random.Range(0.0f, 1.0f) < 0.002f )
      {
             string mes = "A message from Unity at time: " + Time.time;

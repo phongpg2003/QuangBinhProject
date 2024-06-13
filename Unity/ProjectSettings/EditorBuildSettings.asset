@@ -26,7 +26,7 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Scenes/TestInteraction.unity
     guid: bca1c2232beba4d3b8933c3720dd9d8c
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Code Example/User Interactions.unity
     guid: 1f2c4c5c9509f4744af09a9eb04d6229
   - enabled: 0

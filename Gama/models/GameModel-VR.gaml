@@ -7,8 +7,7 @@ species unity_linker parent: abstract_unity_linker {
 	int max_num_players  <- -1;
 	int min_num_players  <- 10;
 	list<point> init_locations <- define_init_locations();
-	unity_property up_building;
-	unity_property up_road;
+	unity_property up_people;
 
 	list<point> define_init_locations {
 		return [world.location];
@@ -18,36 +17,29 @@ species unity_linker parent: abstract_unity_linker {
 		//define the unity properties
 		do define_properties;
 		
-		//add the static_geometry agents as static agents/geometries to send to unity with the up_geom unity properties.
-		do add_background_geometries(building,up_building);
-		do add_background_geometries(road collect (each.shape + 4),up_road);
-		
 	}
 	
 	//action that defines the different unity properties
 	action define_properties {
 		
-		//define a unity_aspect called geom_aspect that will display the agents using their geometries, with a height of 10 meters, the gray color, and we use the default precision. 
-		unity_aspect building_aspect <- geometry_aspect(10.0, #gray, precision);
+		//define a unity_aspect called tree_aspect that will display in Unity the agents with the SM_arbres_001 prefab, with a scale of 2.0, no y-offset, 
+		//a rotation coefficient of 1.0 (no change of rotation from the prefab), no rotation offset, and we use the default precision. 
+		unity_aspect car_aspect <- prefab_aspect("Prefabs/Visual Prefabs/City/Vehicles/Car",100,0.2,1.0,-90.0, precision);
 		
-		//define the up_geom unity property, with the name "polygon", no specific layer, no interaction, and the agents location are not sent back 
+		//define the up_car unity property, with the name "car", no specific layer, the car_aspect unity aspect, no interaction, and the agents location are not sent back 
 		//to GAMA. 
-		up_building <- geometry_properties("building", nil, building_aspect, #no_interaction, false);
+		up_people<- geometry_properties("car", nil, car_aspect, #no_interaction, false);
 		
-		// add the up_geom unity_property to the list of unity_properties
-		unity_properties << up_building;
+		// add the up_tree unity_property to the list of unity_properties
+		unity_properties << up_people;
 		
 		
+	}
+	
+	reflex send_agents when: not empty(unity_player) {
+		do add_geometries_to_send(people where (each.my_path != nil),up_people);
 		
-		//define a unity_aspect called geom_aspect that will display the agents using their geometries, with a height of 10 meters, the gray color, and we use the default precision. 
-		unity_aspect road_aspect <- geometry_aspect(10.0, #gray, precision);
 		
-		//define the up_geom unity property, with the name "polygon", no specific layer, no interaction, and the agents location are not sent back 
-		//to GAMA. 
-		up_road <- geometry_properties("road", nil, road_aspect, #no_interaction, false);
-		
-		// add the up_geom unity_property to the list of unity_properties
-		unity_properties << up_road;
 	}
 	
 
@@ -73,9 +65,9 @@ species unity_player parent: abstract_unity_player{
 }
 
 experiment vr_xp parent:game autorun: false type: unity {
-	float minimum_cycle_duration <- 3600.0;
+	float minimum_cycle_duration <- 0.05;
 	string unity_linker_species <- string(unity_linker);
-	list<string> displays_to_hide <- ["map","Tools panel","Number of people alive","Number of people die","Number of road die","Number of building drowned"];
+	list<string> displays_to_hide <- ["map"];
 	float t_ref;
 
 	action create_player(string id) {

@@ -15,7 +15,7 @@ global {
 	map<date, list<float>> data_map;
 	float step <- 1 #mn;
 	date current_date <- #now;
-	int nb_of_people <- 100;
+	int nb_of_people <- 500;
 	int casualties <- 0;
 	int evacuated <- 0;
 	int roaddie <- 0 update: length(road where (each.drowned = true));
@@ -31,11 +31,11 @@ global {
 	list<string> actions <- ["build dyke", "destroy dyke", "end of turn"];
 	float budget;
 	float score;
-	float limitscore;
-	float budget_year <- 8000.0;
+	float limitscore <- 32000.0;
+	float budget_year <- 3000.0;
 	bool need_to_recompute_graph <- false;
 	list<file> images <- [file("../includes/pencil.jpg"), file("../includes/eraser1.png"), file("../includes/gstart_icon.jpg"),file("../includes/build_icon.png")];
-	file my_csv_file <- csv_file("../includes/FloodDataH_short.csv", ",");
+	file my_csv_file <- csv_file("../includes/FLoodDataH.csv");//csv_file("../includes/FloodDataH_short.csv", ",");
 	string PLAYER_TURN <- "PLAYER TURN";
 	string SIMULATION <- "SIMULATION";
 	string stage <- PLAYER_TURN;
@@ -557,7 +557,7 @@ grid button width: 2 height: 2 {
 
 }
 
-experiment game type: gui {
+experiment game type: gui virtual: true {
 	parameter "Alert Strategy" var: the_alert_strategy init: "CLOSEST" among: ["RANDOM", "CLOSEST"] category: "Alert";
 	//	parameter "Number of people" var: nb_of_people init: 100 min: 100 max: 20000 category: "Initialization";
 	output {
