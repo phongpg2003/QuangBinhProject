@@ -110,6 +110,8 @@ public class PolyExtruder : MonoBehaviour
 
     #region MeshCreator
 
+    bool editMode = false;
+
     /// <summary>
     /// Create a prism based on the input parameters.
     /// </summary>
@@ -119,9 +121,10 @@ public class PolyExtruder : MonoBehaviour
     /// <param name="color">Color of the prism's material.</param>
     /// <param name="is3D">Set to<c>true</c> if polygon extrusion should be applied (= 3D prism), or <c>false</c> if it is only the (2D) polygon.</param>
     /// <param name="isUsingBottomMeshIn3D">Set to<c>true</c> if the bottom mesh component should be attached, or <c>false</c> if not.</param>
-    public void createPrism(string prismName, float height, Vector2[] vertices, Color32 color, bool is3D, bool isUsingBottomMeshIn3D)
+    public void createPrism(bool editModeA, string prismName, float height, Vector2[] vertices, Color32 color, bool is3D, bool isUsingBottomMeshIn3D)
     {
         // set data
+        this.editMode = editModeA;
         this.prismName = name;
         this.extrusionHeightY = height;
         this.originalPolygonVertices = vertices;
@@ -239,13 +242,16 @@ public class PolyExtruder : MonoBehaviour
         GameObject goB = new GameObject();
         goB.transform.parent = this.transform;
         goB.name = "bottom_" + this.prismName;
+
         MeshFilter mfB = goB.AddComponent<MeshFilter>();
         if(this.isUsingColliders) goB.AddComponent<MeshCollider>();
         bottomMeshRenderer = goB.AddComponent<MeshRenderer>();
-        bottomMeshRenderer.material = new Material(Shader.Find(shader));
+        bottomMeshRenderer.sharedMaterial = new Material(Shader.Find(shader));
 
+        Mesh mesh = new Mesh();
+        mfB.mesh = mesh;
         // keep reference to bottom mesh
-        this.bottomMesh = mfB.mesh;
+        this.bottomMesh = mesh;
 
         // init helper values to create bottom mesh
         List<Vector2> pointsB = new List<Vector2>();
@@ -297,8 +303,13 @@ public class PolyExtruder : MonoBehaviour
         {
             // if the bottom mesh component should not be attached in 3D (prism),
             // simply destroy the GameObject
-            if (this.isUsingBottomMeshIn3D == false) GameObject.Destroy(goB);
-
+            if (this.isUsingBottomMeshIn3D == false)
+            {
+               if (editMode)
+                    GameObject.DestroyImmediate(goB);
+               else
+                    GameObject.Destroy(goB);
+            }
 
 			// 2. TOP MESH
 			//
@@ -308,12 +319,16 @@ public class PolyExtruder : MonoBehaviour
 			goT.transform.parent = this.transform;
 			goT.name = "top_" + this.prismName;
 			MeshFilter mfT = goT.AddComponent<MeshFilter>();
-			if(this.isUsingColliders) goT.AddComponent<MeshCollider>();
+
+            if(this.isUsingColliders) goT.AddComponent<MeshCollider>();
 			topMeshRenderer = goT.AddComponent<MeshRenderer>();
-			topMeshRenderer.material = new Material(Shader.Find(shader));
-			
-			// keep reference to top mesh
-			this.topMesh = mfT.mesh;
+			topMeshRenderer.sharedMaterial = new Material(Shader.Find(shader));
+
+            // keep reference to top mesh
+            Mesh meshT = new Mesh();
+            mfT.mesh = meshT;
+
+            this.topMesh = meshT;
 			
 			// init helper values to create top mesh
 			List<Vector2> pointsT = new List<Vector2>();
@@ -361,10 +376,14 @@ public class PolyExtruder : MonoBehaviour
 			goS.name = "surround_" + this.prismName;
 			MeshFilter mfS = goS.AddComponent<MeshFilter>();
 			surroundMeshRenderer = goS.AddComponent<MeshRenderer>();
-			surroundMeshRenderer.material = new Material(Shader.Find(shader));
-			
-			// keep reference to surrounding mesh
-			this.surroundMesh = mfS.mesh;
+			surroundMeshRenderer.sharedMaterial = new Material(Shader.Find(shader));
+
+            // keep reference to surrounding mesh
+            Mesh meshS = new Mesh();
+            mfS.mesh = meshS;
+
+          
+            this.surroundMesh = meshS;
 			
 			// init helper values to create surrounding mesh
 			List<int> indicesS = new List<int>();
@@ -516,13 +535,13 @@ public class PolyExtruder : MonoBehaviour
         // update color on meshes
         if(!this.is3D)
         {
-            bottomMeshRenderer.material.color = this.prismColor;
+            bottomMeshRenderer.sharedMaterial.color = this.prismColor;
         }
         else
         {
-            if(this.isUsingBottomMeshIn3D) bottomMeshRenderer.material.color = this.prismColor;
-            topMeshRenderer.material.color = this.prismColor;
-            surroundMeshRenderer.material.color = this.prismColor;
+            if(this.isUsingBottomMeshIn3D) bottomMeshRenderer.sharedMaterial.color = this.prismColor;
+            topMeshRenderer.sharedMaterial.color = this.prismColor;
+            surroundMeshRenderer.sharedMaterial.color = this.prismColor;
         }
     }
 
@@ -563,8 +582,8 @@ public class PolyExtruder : MonoBehaviour
         outlineRenderer.startWidth = outlineWidth;
         outlineRenderer.endWidth = outlineWidth;
         outlineRenderer.useWorldSpace = false;
-        outlineRenderer.material = new Material(Shader.Find(shader));
-        outlineRenderer.material.color = outlineColor;
+        outlineRenderer.sharedMaterial = new Material(Shader.Find(shader));
+        outlineRenderer.sharedMaterial.color = outlineColor;
 
         // prepare original polygon vertices for LineRenderer positions
         Vector3[] outlineRendererPositions = new Vector3[this.originalPolygonVertices.Length];

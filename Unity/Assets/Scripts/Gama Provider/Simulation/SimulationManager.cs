@@ -299,7 +299,7 @@ public class SimulationManager : MonoBehaviour
                 }
                 List<int> pt = infoWorld.pointsGeom[cptGeom].c;
 
-                obj = polyGen.GeneratePolygons(name , pt, prop, parameters.precision);
+                obj = polyGen.GeneratePolygons(false, name , pt, prop, parameters.precision);
 
                 if (prop.hasCollider)
                 {

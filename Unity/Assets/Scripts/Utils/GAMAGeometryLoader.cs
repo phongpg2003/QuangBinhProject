@@ -224,7 +224,7 @@ public class GAMAGeometryLoader: ConnectionWithGama
                 }
                 List<int> pt = infoWorld.pointsGeom[cptGeom].c;
 
-                obj = polyGen.GeneratePolygons(name, pt, prop, parameters.precision);
+                obj = polyGen.GeneratePolygons(true, name, pt, prop, parameters.precision);
                 if (prop.hasCollider)
                 {
 

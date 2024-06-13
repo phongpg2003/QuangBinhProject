@@ -38,7 +38,7 @@ public class PolygonGenerator
 
 
 
-    public GameObject GeneratePolygons(String name, List<int> points, PropertiesGAMA prop, int precision)
+    public GameObject GeneratePolygons(bool editMode, String name, List<int> points, PropertiesGAMA prop, int precision)
     {
    
         List<Vector2> pts = new List<Vector2>();
@@ -53,13 +53,13 @@ public class PolygonGenerator
         Color32 col = new Color32(BitConverter.GetBytes(prop.red)[0], BitConverter.GetBytes(prop.green)[0],
                  BitConverter.GetBytes(prop.blue)[0], BitConverter.GetBytes(prop.alpha)[0]);
         // GameObject p = GeneratePolygon(pts.ToArray(), geom.names.Count > 0 ?  geom.names[cpt] : "", geom.tags.Count > 0 ?  geom.tags[cpt] : "", geom.heights[cpt], geom.hasColliders[cpt], geom.is3D[cpt]);
-        return GeneratePolygon(name, MeshDataPoints, ((float) prop.height) / precision, col);
+        return GeneratePolygon(editMode, name, MeshDataPoints, ((float) prop.height) / precision, col);
        
     }
 
 
     // Start is called before the first frame update
-    GameObject GeneratePolygon(String name, Vector2[] MeshDataPoints, float extrusionHeight, Color32 color)
+    GameObject GeneratePolygon(bool editMode, String name, Vector2[] MeshDataPoints, float extrusionHeight, Color32 color)
     {
         bool isUsingBottomMeshIn3D = false;
         bool isOutlineRendered = true;
@@ -82,7 +82,7 @@ public class PolygonGenerator
         Vector3 pos = polyExtruderGO.transform.position;
         pos.y += offsetYBackgroundGeom;
         polyExtruderGO.transform.position = pos;
-        polyExtruder.createPrism(name, extrusionHeight, MeshDataPoints, color, is3D, isUsingBottomMeshIn3D);
+        polyExtruder.createPrism(editMode, name, extrusionHeight, MeshDataPoints, color, is3D, isUsingBottomMeshIn3D);
         surroundMesh = polyExtruder.surroundMesh;
         return polyExtruderGO;
     }
